@@ -1,0 +1,15 @@
+# 灵影护腿 - 盔甲配置
+# 功能：穿戴时玩家体型缩小，同时移动速度提升
+# Lora 设计词条：shadow_leggings, ethereal_greaves, phantom_silk, swift_shadow, translucent_pants
+
+# CraftEngine 物品命名空间ID
+item-id: "miragedge_items:shrink_leggings"
+
+# 体型缩小倍数 (0.5 = 一半大小)
+scale-multiplier: 0.5
+
+# 移动速度增益比例 (1.0 = 增速 100%)
+speed-boost: 1.0
+
+# 装备状态检查周期（tick，10 tick = 0.5 秒）
+check-interval-ticks: 10

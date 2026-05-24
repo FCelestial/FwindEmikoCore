@@ -66,7 +66,7 @@ public final class PacketHelper {
         }
         try {
             protocolManager.sendServerPacket(player, packet);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             // 静默处理发送失败，避免影响主流程
         }
     }

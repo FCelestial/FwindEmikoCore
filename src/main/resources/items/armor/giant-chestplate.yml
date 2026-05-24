@@ -1,0 +1,15 @@
+# 巨像胸甲 - 盔甲配置
+# 功能：穿戴时玩家体型放大，同时移动速度降低
+# Lora 设计词条：giant_armor, heavy_plate, colossal_chestplate, iron_golem_style, oversized
+
+# CraftEngine 物品命名空间ID
+item-id: "miragedge_items:giant_chestplate"
+
+# 体型放大倍数 (2.0 = 两倍大)
+scale-multiplier: 2.0
+
+# 移动速度减益比例 (-0.5 = 减速 50%)
+speed-reduction: -0.5
+
+# 装备状态检查周期（tick，10 tick = 0.5 秒）
+check-interval-ticks: 10

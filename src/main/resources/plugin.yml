@@ -1,5 +1,5 @@
 name: FwindEmikoCore
-version: '0.6'
+version: '0.7'
 main: top.miragedge.fwindemikocore.FwindEmikoCore
 api-version: '1.21'
 author: F.windEmiko

@@ -1,17 +1,14 @@
 package top.miragedge.fwindemikocore.modules.scale;
 
-import top.miragedge.fwindemikocore.api.ItemModule;
 import top.miragedge.fwindemikocore.modules.effects.EntityEffects;
 import top.miragedge.fwindemikocore.modules.packet.PlayerScalePacket;
-import top.miragedge.fwindemikocore.util.ConfigHelper;
 import top.miragedge.fwindemikocore.util.Msg;
 import org.bukkit.NamespacedKey;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeModifier;
-import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -24,23 +21,24 @@ import java.util.UUID;
 /**
  * 玩家碰撞箱缩放功能模块。
  * <p>
- * 提供临时改变玩家尺寸（scale）的能力，同时影响：
+ * 提供改变玩家尺寸（scale）的能力，同时影响：
  * <ul>
  *   <li><b>服务端碰撞箱</b>：通过 {@link Attribute#SCALE} 属性修饰符真实改变</li>
  *   <li><b>客户端显示</b>：通过 ProtocolLib 广播 ENTITY_METADATA 数据包同步</li>
  * </ul>
  * <p>
- * 此模块可以被其他物品模块调用，实现"使用某物品后变小/变大"的效果。
- * 也支持通过配置文件独立运行（绑定到特定 CraftEngine 物品）。
+ * 此模块是纯功能模块，不绑定任何物品，供其他物品模块调用。
  * <p>
  * <b>使用示例：</b>
  * <pre>
- * PlayerScaleModule scaleModule = new PlayerScaleModule(plugin);
- * scaleModule.loadConfig();
- * scaleModule.applyScale(player, 0.5f, 10); // 玩家缩小到50%，持续10秒
+ * PlayerScaleModule scaleModule = plugin.getScaleModule();
+ * scaleModule.applyScale(player, 0.5f, 10); // 临时：玩家缩小到50%，持续10秒
+ * scaleModule.applyPersistentScale(player, 2.0f, key); // 持续：玩家放大到200%，需手动移除
  * </pre>
  */
-public class PlayerScaleModule extends ItemModule {
+public class PlayerScaleModule implements Listener {
+
+    private final JavaPlugin plugin;
 
     /**
      * 记录每个玩家原始的 scale 基值，用于恢复。
@@ -48,17 +46,8 @@ public class PlayerScaleModule extends ItemModule {
      */
     private final Map<UUID, Double> originalScales = new HashMap<>();
 
-    /** 是否启用独立物品触发模式（从配置读取） */
-    private boolean itemTriggerEnabled;
-    /** 默认缩放比例（从配置读取） */
-    private float defaultScale;
-    /** 默认持续时间（从配置读取） */
-    private int defaultDuration;
-    /** 默认冷却时间（从配置读取） */
-    private int defaultCooldown;
-
-    /** 模块独立配置 */
-    private YamlConfiguration itemConfig;
+    /** 临时缩放使用的修饰符键 */
+    private static final String TEMP_SCALE_KEY = "fec_player_scale";
 
     /**
      * 构造玩家缩放模块。
@@ -66,57 +55,51 @@ public class PlayerScaleModule extends ItemModule {
      * @param plugin 插件主实例
      */
     public PlayerScaleModule(JavaPlugin plugin) {
-        super(plugin, "玩家缩放", "items/modules/player-scale.yml", "miragedge_items:scale_changer");
+        this.plugin = plugin;
     }
 
-    @Override
-    public void loadConfig() {
-        this.itemConfig = ConfigHelper.loadItemConfig(plugin, configFilePath);
-        ConfigurationSection config = itemConfig;
+    /**
+     * 注册事件监听器。
+     */
+    public void register() {
+        plugin.getServer().getPluginManager().registerEvents(this, plugin);
+    }
 
-        this.customItemId = ConfigHelper.getItemId(config, "item-id", defaultItemId, logger);
-        this.itemTriggerEnabled = config.getBoolean("item-trigger-enabled", false);
-        this.defaultScale = (float) ConfigHelper.getClampedDouble(config, "default-scale", 0.5, 0.1, 10.0);
-        this.defaultDuration = ConfigHelper.getPositiveInt(config, "default-duration", 10);
-        this.defaultCooldown = ConfigHelper.getPositiveInt(config, "default-cooldown", 30);
+    /**
+     * 注销事件监听器。
+     */
+    public void unregister() {
+        org.bukkit.event.HandlerList.unregisterAll(this);
     }
 
     /**
      * 对指定玩家应用临时缩放效果。
      * <p>
      * 此方法会同时修改服务端属性（影响碰撞箱）和客户端显示。
+     * 效果在指定时间后自动恢复。
      *
      * @param player   目标玩家
      * @param scale    缩放比例（1.0 = 正常，0.5 = 一半，2.0 = 两倍）
      * @param duration 持续时间（秒）
      */
     public void applyScale(@org.jetbrains.annotations.NotNull Player player, float scale, int duration) {
-        // 保存原始值（如果尚未保存）
         originalScales.putIfAbsent(player.getUniqueId(), player.getAttribute(Attribute.SCALE).getBaseValue());
 
-        // 计算相对于原始值的修饰量
-        double modifierValue = scale - 1.0; // MULTIPLY_SCALAR_1 模式下: base * (1 + value)
+        double modifierValue = scale - 1.0;
+        NamespacedKey key = new NamespacedKey(plugin, TEMP_SCALE_KEY);
 
-        NamespacedKey key = new NamespacedKey(plugin, "fec_player_scale");
-
-        // 应用服务端属性修饰符（真实改变碰撞箱）
         EntityEffects.applyAttributeModifier(player, Attribute.SCALE, key, modifierValue, AttributeModifier.Operation.MULTIPLY_SCALAR_1);
-
-        // 广播客户端数据包同步显示
         PlayerScalePacket.broadcastScaleUpdate(player, scale);
 
-        // 播放效果音效
         if (scale < 1.0f) {
             EntityEffects.playSound(player, "entity.illusioner.mirror_move", 0.6F, 1.2F);
         } else {
             EntityEffects.playSound(player, "entity.illusioner.cast_spell", 0.6F, 0.8F);
         }
 
-        // 发送 ActionBar 提示（使用 MiniMessage 格式）
         int percent = (int) (scale * 100);
         Msg.actionBar(player, "<aqua>体型变化: <yellow>" + percent + "% <aqua>持续 <yellow>" + duration + "<aqua> 秒");
 
-        // 定时恢复
         new BukkitRunnable() {
             @Override
             public void run() {
@@ -126,19 +109,17 @@ public class PlayerScaleModule extends ItemModule {
     }
 
     /**
-     * 恢复指定玩家的原始尺寸。
+     * 恢复指定玩家的原始尺寸（临时缩放专用）。
      *
      * @param player 目标玩家
      */
     public void restoreScale(@org.jetbrains.annotations.NotNull Player player) {
-        NamespacedKey key = new NamespacedKey(plugin, "fec_player_scale");
+        NamespacedKey key = new NamespacedKey(plugin, TEMP_SCALE_KEY);
         EntityEffects.removeAttributeModifier(player, Attribute.SCALE, key);
 
-        // 恢复客户端显示
         double originalScale = originalScales.getOrDefault(player.getUniqueId(), 1.0);
         PlayerScalePacket.broadcastScaleUpdate(player, (float) originalScale);
 
-        // 清理记录
         originalScales.remove(player.getUniqueId());
 
         EntityEffects.playSound(player, "entity.enderman.teleport", 0.4F, 1.0F);
@@ -155,6 +136,39 @@ public class PlayerScaleModule extends ItemModule {
         return originalScales.containsKey(player.getUniqueId());
     }
 
+    /**
+     * 对指定玩家应用<b>持续性</b>缩放效果（用于装备驱动，不会自动恢复）。
+     * <p>
+     * 此方法会同时修改服务端属性（影响碰撞箱）和客户端显示。
+     * 效果需要通过 {@link #removePersistentScale(Player, NamespacedKey)} 手动移除。
+     *
+     * @param player 目标玩家
+     * @param scale  缩放比例（1.0 = 正常，0.5 = 一半，2.0 = 两倍）
+     * @param key    修饰符的命名空间键（用于唯一标识，装备模块应各自使用不同key）
+     */
+    public void applyPersistentScale(@org.jetbrains.annotations.NotNull Player player, float scale, NamespacedKey key) {
+        originalScales.putIfAbsent(player.getUniqueId(), player.getAttribute(Attribute.SCALE).getBaseValue());
+
+        double modifierValue = scale - 1.0;
+        EntityEffects.applyAttributeModifier(player, Attribute.SCALE, key, modifierValue, AttributeModifier.Operation.MULTIPLY_SCALAR_1);
+        PlayerScalePacket.broadcastScaleUpdate(player, scale);
+    }
+
+    /**
+     * 移除指定玩家的持续性缩放效果。
+     *
+     * @param player 目标玩家
+     * @param key    修饰符的命名空间键（必须与 apply 时一致）
+     */
+    public void removePersistentScale(@org.jetbrains.annotations.NotNull Player player, NamespacedKey key) {
+        EntityEffects.removeAttributeModifier(player, Attribute.SCALE, key);
+
+        double originalScale = originalScales.getOrDefault(player.getUniqueId(), 1.0);
+        PlayerScalePacket.broadcastScaleUpdate(player, (float) originalScale);
+
+        originalScales.remove(player.getUniqueId());
+    }
+
     /** 新玩家加入时，同步当前所有被缩放玩家的状态给新玩家 */
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
@@ -162,7 +176,6 @@ public class PlayerScaleModule extends ItemModule {
         for (Map.Entry<UUID, Double> entry : originalScales.entrySet()) {
             Player scaledPlayer = plugin.getServer().getPlayer(entry.getKey());
             if (scaledPlayer != null && scaledPlayer.isOnline()) {
-                // 新玩家需要看到被缩放玩家的当前尺寸
                 double currentScale = scaledPlayer.getAttribute(Attribute.SCALE).getValue();
                 PlayerScalePacket.sendScaleUpdate(scaledPlayer, newPlayer, (float) currentScale);
             }
@@ -174,37 +187,9 @@ public class PlayerScaleModule extends ItemModule {
     public void onPlayerQuit(PlayerQuitEvent event) {
         Player player = event.getPlayer();
         if (originalScales.containsKey(player.getUniqueId())) {
-            // 强制移除修饰符，防止残留
-            NamespacedKey key = new NamespacedKey(plugin, "fec_player_scale");
+            NamespacedKey key = new NamespacedKey(plugin, TEMP_SCALE_KEY);
             EntityEffects.removeAttributeModifier(player, Attribute.SCALE, key);
             originalScales.remove(player.getUniqueId());
         }
-    }
-
-    /**
-     * 获取默认缩放比例。
-     *
-     * @return 默认 scale 值
-     */
-    public float getDefaultScale() {
-        return defaultScale;
-    }
-
-    /**
-     * 获取默认持续时间。
-     *
-     * @return 默认持续时间（秒）
-     */
-    public int getDefaultDuration() {
-        return defaultDuration;
-    }
-
-    /**
-     * 获取默认冷却时间。
-     *
-     * @return 默认冷却时间（秒）
-     */
-    public int getDefaultCooldown() {
-        return defaultCooldown;
     }
 }

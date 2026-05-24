@@ -74,7 +74,6 @@ public abstract class ItemModule implements Listener {
         if (!registered && enabled) {
             plugin.getServer().getPluginManager().registerEvents(this, plugin);
             registered = true;
-            logger.eventRegistered();
         }
     }
 
@@ -86,7 +85,6 @@ public abstract class ItemModule implements Listener {
         if (registered) {
             HandlerList.unregisterAll(this);
             registered = false;
-            logger.eventUnregistered();
         }
     }
 
@@ -98,22 +96,6 @@ public abstract class ItemModule implements Listener {
         unregister();
         loadConfig();
         register();
-    }
-
-    /**
-     * 检查 CraftEngine 是否已加载。
-     * 由主类在插件启用时调用，仅输出状态日志，不做物品存在性验证。
-     * <p>
-     * 物品存在性改为在运行时通过 {@link #isHoldingValidTool(ItemStack)} 动态检测，
-     * 避免 CraftEngine 版本差异导致的 NoSuchMethodError。
-     */
-    public void checkCraftEngineLoaded() {
-        if (!CraftEngineHelper.isAvailable()) {
-            logger.craftEngineWaiting();
-            return;
-        }
-        logger.craftEngineLoaded();
-        logger.info("自定义物品将在运行时动态检测: " + customItemId);
     }
 
     /**
@@ -157,5 +139,14 @@ public abstract class ItemModule implements Listener {
      */
     public @NotNull String getModuleName() {
         return moduleName;
+    }
+
+    /**
+     * 获取模块配置的 CraftEngine 物品ID。
+     *
+     * @return 物品命名空间ID（格式: namespace:id）
+     */
+    public @NotNull String getCustomItemId() {
+        return customItemId != null ? customItemId : defaultItemId;
     }
 }

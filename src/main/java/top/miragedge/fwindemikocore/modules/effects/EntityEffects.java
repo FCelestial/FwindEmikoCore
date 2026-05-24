@@ -195,6 +195,39 @@ public final class EntityEffects {
     }
 
     /**
+     * 给实体应用<b>持续性</b>属性修饰符（不会自动移除，需手动调用 removeAttributeModifier）。
+     * <p>
+     * 适用于装备驱动的属性变化（如盔甲提供移速加成/减益）。
+     *
+     * @param entity    目标实体
+     * @param attribute 要修改的属性
+     * @param key       修饰符的命名空间键（用于唯一标识）
+     * @param value     修饰值
+     * @param operation 运算模式
+     * @return true 如果应用成功
+     */
+    public static boolean applyPersistentAttributeModifier(@NotNull LivingEntity entity, @NotNull Attribute attribute,
+                                                            @NotNull NamespacedKey key, double value,
+                                                            @NotNull AttributeModifier.Operation operation) {
+        return applyAttributeModifier(entity, attribute, key, value, operation);
+    }
+
+    /**
+     * 移除实体上指定命名空间键的属性修饰符。
+     * <p>
+     * 此方法是 {@link #removeAttributeModifier(LivingEntity, Attribute, NamespacedKey)} 的别名，
+     * 用于与 applyPersistentAttributeModifier 语义对称。
+     *
+     * @param entity    目标实体
+     * @param attribute 属性类型
+     * @param key       修饰符的命名空间键
+     */
+    public static void removePersistentAttributeModifier(@NotNull LivingEntity entity, @NotNull Attribute attribute,
+                                                          @NotNull NamespacedKey key) {
+        removeAttributeModifier(entity, attribute, key);
+    }
+
+    /**
      * 给玩家发送 ActionBar 消息（支持 & 颜色码和 MiniMessage）。
      *
      * @param player  目标玩家
